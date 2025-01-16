@@ -1,16 +1,51 @@
 # API Reference
 
-## Components
+## Core Types
+
+### AbstractComponent
+
+```julia
+abstract type AbstractComponent end
+```
+
+Base type for all components in the system. All components must inherit from this type.
+
+### AbstractAspect
+
+```julia
+abstract type AbstractAspect end
+```
+
+Base type for all aspects in the system. All aspects must inherit from this type.
+
+### Scope
+
+```julia
+abstract type Scope end
+struct SingletonScope <: Scope end
+struct PrototypeScope <: Scope end
+```
+
+Types that define component lifecycle management:
+- `SingletonScope`: One instance is shared across the container
+- `PrototypeScope`: New instance is created for each request
+
+## Component Management
 
 ### @component
 
 ```julia
-@component struct MyComponent
+@component struct MyComponent <: AbstractComponent
     field::Type
+    # ...
 end
 ```
 
-Marks a struct as a component, making it available for dependency injection. Components can inherit from other types while still being managed by the container.
+Marks a struct as a component, making it available for dependency injection. Features:
+- Automatic registration with container
+- Support for constructor injection
+- Lifecycle management through scopes
+- Circular dependency detection
 
 ### register!
 
@@ -18,9 +53,11 @@ Marks a struct as a component, making it available for dependency injection. Com
 register!(component::T; scope::Scope = SingletonScope()) where T <: AbstractComponent
 ```
 
-Registers a component instance with the container. The scope parameter determines how the component is managed:
-- `SingletonScope()`: A single instance is shared (default)
-- `PrototypeScope()`: A new instance is created each time
+Registers a component instance with the container. Parameters:
+- `component`: The component instance to register
+- `scope`: The scope that determines instance lifecycle (default: singleton)
+
+Returns the registered component instance.
 
 ### get_instance
 
@@ -29,6 +66,7 @@ get_instance(T::Type)
 ```
 
 Retrieves an instance of the specified component type from the container.
+Throws `ComponentNotFoundError` if component is not registered.
 
 ## Dependency Injection
 
@@ -38,19 +76,30 @@ Retrieves an instance of the specified component type from the container.
 @autowired service::ServiceType
 ```
 
-Creates a function that retrieves the specified component from the container. The function name will be the same as the field name.
+Creates a function that retrieves the specified component from the container.
+The function name will be the same as the field name.
 
-## Aspects
+Features:
+- Lazy loading of dependencies
+- Automatic scope handling
+- Type safety checks
+
+## Aspect-Oriented Programming
 
 ### @aspect
 
 ```julia
-@aspect struct MyAspect
+@aspect struct MyAspect <: AbstractAspect
     field::Type
+    # ...
 end
 ```
 
 Defines an aspect that can add behavior to components through advice.
+Features:
+- State management through fields
+- Multiple advice support
+- Pointcut expression matching
 
 ### Advice Types
 
@@ -63,6 +112,9 @@ end
 ```
 
 Creates advice that executes before the target function.
+Parameters:
+- `pointcut`: String pattern matching target methods
+- `body`: Code block to execute
 
 #### @after
 
@@ -73,46 +125,62 @@ end
 ```
 
 Creates advice that executes after the target function.
+Parameters:
+- `pointcut`: String pattern matching target methods
+- `body`: Code block to execute
 
 #### @around
 
 ```julia
 @around pointcut begin
-    # code to execute before and after the target
+    # code to execute around the target
+    result = proceed()
+    # more code
+    return result
 end
 ```
 
 Creates advice that executes both before and after the target function.
+Parameters:
+- `pointcut`: String pattern matching target methods
+- `body`: Code block with `proceed()` call
 
-## Scoping
+## Container Management
 
-### Scope Types
-
-- `SingletonScope`: Ensures only one instance exists
-- `PrototypeScope`: Creates a new instance each time
-
-## Container
-
-### Container
+### reset_container!
 
 ```julia
-mutable struct Container
-    components::OrderedDict{Symbol, ComponentInfo}
-    aspects::Vector{AbstractAspect}
+reset_container!()
+```
+
+Resets the global container, clearing all registered components and aspects.
+
+### get_container
+
+```julia
+get_container()
+```
+
+Returns the current global container instance.
+
+## Error Types
+
+### ComponentNotFoundError
+
+```julia
+struct ComponentNotFoundError <: Exception
+    type::Type
 end
 ```
 
-The main container that manages all components and aspects. Usually accessed through the global `GLOBAL_CONTAINER` instance.
+Thrown when attempting to retrieve a component that is not registered.
 
-### ComponentInfo
+### CircularDependencyError
 
 ```julia
-mutable struct ComponentInfo
-    component_type::Type
-    scope::Scope
-    instance::Union{Nothing, Any}
-    factory::Function
+struct CircularDependencyError <: Exception
+    cycle::Vector{Type}
 end
 ```
 
-Internal structure used by the container to manage component instances and their lifecycle. 
+Thrown when a circular dependency is detected during component initialization. 
