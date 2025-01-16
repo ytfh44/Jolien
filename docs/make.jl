@@ -5,7 +5,7 @@ makedocs(
     sitename = "Jolien",
     format = Documenter.HTML(),
     modules = [Jolien],
-    strict = false,
+    checkdocs = :none,
     pages = [
         "Home" => "index.md",
         "API Reference" => "api.md"
