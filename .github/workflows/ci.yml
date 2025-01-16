@@ -64,20 +64,22 @@ jobs:
           version: '1.9'
       - name: Setup Registry and Generate Manifest
         run: |
-          julia --project=. -e '
+          julia --project=docs -e '
             using Pkg;
             # Add and update registry
             Pkg.Registry.add("General");
             Pkg.Registry.update();
-            # Setup dependencies
+            # Develop the package
+            Pkg.develop(PackageSpec(path=pwd()));
+            # Add dependencies
+            Pkg.add("Documenter");
+            # Instantiate
             Pkg.resolve();
             Pkg.instantiate();
-            # Add Documenter
-            Pkg.add("Documenter");
-            Pkg.instantiate();
           '
-      - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-docdeploy@v1
+      - name: Build and deploy documentation
+        run: |
+          julia --project=docs docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }} 
