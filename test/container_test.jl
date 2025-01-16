@@ -86,7 +86,7 @@ end
     component2 = DuplicateComponent(2)
     
     register!(component1)
-    @test_throws ErrorException register!(component2)
+    @test_throws DuplicateComponentError register!(component2)
     
     # Test invalid component type
     struct NotAComponent
@@ -94,7 +94,7 @@ end
     end
     
     invalid = NotAComponent(1)
-    @test_throws ErrorException register!(invalid)
+    @test_throws InvalidComponentError register!(invalid)
 end
 
 @testset "Container Scoping" begin

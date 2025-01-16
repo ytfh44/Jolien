@@ -1,43 +1,44 @@
 # Jolien Documentation
 
-Welcome to the documentation of Jolien, a lightweight dependency injection and aspect-oriented programming framework for Julia.
+Welcome to the documentation of Jolien, a lightweight aspect-oriented programming framework for Julia.
 
 ## Overview
 
-Jolien provides a simple yet powerful way to manage dependencies and implement cross-cutting concerns in your Julia applications. It combines dependency injection (DI) and aspect-oriented programming (AOP) into a cohesive framework.
+Jolien provides a simple yet powerful way to implement cross-cutting concerns in your Julia applications. It focuses on aspect-oriented programming (AOP) with a flexible component system.
 
 ### Key Concepts
 
-- **Components**: Basic building blocks that can be automatically managed and injected
-- **Aspects**: Cross-cutting concerns that can be applied to multiple components
-- **Container**: Central registry that manages component lifecycles and dependencies
-- **Scopes**: Rules that determine how component instances are managed and shared
+- **Components**: Types that can be registered and managed by the framework
+- **Aspects**: Cross-cutting concerns that can be applied to functions
+- **Advice**: Code that is executed before, after, or around function calls
+- **Container**: Central registry that manages components and aspects
 
 ## Features
 
-### Dependency Injection
+### Component System
 
-- **Component Registration**: Automatic registration with `@component` macro
-- **Dependency Resolution**: Automatic injection with `@autowired` macro
-- **Scoped Instances**: Support for singleton and prototype scopes
-- **Circular Detection**: Built-in circular dependency detection
+- **Flexible Type System**:
+  - Direct inheritance from `AbstractComponent`
+  - Type conversion support for existing types
+- **Registration Management**:
+  - Component registration with type checking
+  - Duplicate registration prevention
+  - Circular dependency detection
 
 ### Aspect-Oriented Programming
 
-- **Aspect Definition**: Define aspects with `@aspect` macro
-- **Multiple Advices**: Support for:
-  - `@before`: Execute before target method
-  - `@after`: Execute after target method
-  - `@around`: Wrap target method execution
-- **Pointcut Expressions**: Flexible method matching
-- **Aspect Lifecycle**: Proper initialization and cleanup
-
-### Configuration Management
-
-- **Environment-based**: Configure components based on environment
-- **Conditional Loading**: Load components based on conditions
-- **Priority Control**: Control component initialization order
-- **Hot Reloading**: Support for runtime reconfiguration
+- **Multiple Advice Types**:
+  - `@before`: Execute before target function
+  - `@after`: Execute after target function
+  - `@around`: Wrap target function execution
+- **Rich Context Access**:
+  - Function name and arguments
+  - Return value modification
+  - Error handling
+- **State Management**:
+  - Aspect state tracking
+  - Call history recording
+  - Result accumulation
 
 ## Getting Started
 
@@ -55,36 +56,26 @@ Pkg.add(url="https://github.com/ytfh44/Jolien")
 ```julia
 using Jolien
 
-# Define a simple component
-@component struct DatabaseConfig
-    host::String
-    port::Int
-    
-    function DatabaseConfig(host::String="localhost", port::Int=5432)
-        new(host, port)
-    end
+# Direct inheritance
+@component struct DirectComponent <: AbstractComponent
+    name::String
 end
 
-# Define a dependent component
-@component struct UserService
-    db::DatabaseConfig
-    
-    function UserService(db::DatabaseConfig)
-        new(db)
-    end
+# Type conversion
+@component struct ConvertibleComponent
+    value::Int
 end
-```
 
-#### Component Registration
-
-```julia
 # Register components
-db_config = DatabaseConfig()
-register!(db_config)
+direct = DirectComponent("test")
+register!(direct)
 
-# Automatic dependency injection
-user_service = UserService(db_config)
-register!(user_service)
+convertible = ConvertibleComponent(42)
+register!(convertible)
+
+# Retrieve components
+@test get_instance(DirectComponent).name == "test"
+@test get_instance(ConvertibleComponent).value == 42
 ```
 
 #### Using Aspects
@@ -92,27 +83,71 @@ register!(user_service)
 ```julia
 # Define a logging aspect
 @aspect struct LoggingAspect
-    log_count::Ref{Int}
+    log::Vector{String}
     
-    function LoggingAspect()
-        new(Ref(0))
-    end
+    LoggingAspect() = new(String[])
 end
 
-# Apply advice
 let
     aspect = LoggingAspect()
-    advice = @before "query" begin
-        aspect.log_count[] += 1
-        println("Executing query...")
+    
+    function greet(name::String)
+        return "Hello, $name!"
     end
     
-    # Apply to a function
-    query_fn = () -> "SELECT * FROM users"
-    logged_query = advice(query_fn)
+    # Add logging with @around
+    logged_greet = @around greet begin
+        push!(aspect.log, "Calling greet with args: $args")
+        result = proceed()
+        push!(aspect.log, "greet returned: $result")
+        result
+    end
     
-    # Execute with logging
-    result = logged_query()
+    # Use the enhanced function
+    result = logged_greet("World")
+    @test result == "Hello, World!"
+    @test length(aspect.log) == 2
+end
+```
+
+#### State Management
+
+```julia
+# Define a stateful aspect
+@aspect struct StateAspect
+    states::Dict{Symbol, Any}
+    
+    StateAspect() = new(Dict{Symbol, Any}())
+end
+
+let
+    aspect = StateAspect()
+    
+    function calculate(x::Int)
+        return x * 2
+    end
+    
+    # Add state tracking
+    tracked_calc = @around calculate begin
+        # Store function name and arguments
+        aspect.states[fn_name] = get(aspect.states, fn_name, 0) + 1
+        
+        # Execute and store result
+        result = proceed()
+        
+        # Update state
+        results_key = Symbol(:results_, fn_name)
+        if !haskey(aspect.states, results_key)
+            aspect.states[results_key] = []
+        end
+        push!(aspect.states[results_key], result)
+        
+        result
+    end
+    
+    # Use the tracked function
+    @test tracked_calc(5) == 10
+    @test aspect.states[Symbol("calculate")] == 1  # Call count
 end
 ```
 

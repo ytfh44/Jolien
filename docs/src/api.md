@@ -8,56 +8,52 @@
 abstract type AbstractComponent end
 ```
 
-Base type for all components in the system. All components must inherit from this type.
+Base type for all components in the system. Components can either directly inherit from this type or implement its interface through conversion methods.
 
-### AbstractAspect
-
-```julia
-abstract type AbstractAspect end
-```
-
-Base type for all aspects in the system. All aspects must inherit from this type.
-
-### Scope
+### Container
 
 ```julia
-abstract type Scope end
-struct SingletonScope <: Scope end
-struct PrototypeScope <: Scope end
+mutable struct Container
+    components::Vector{Any}
+    aspects::Vector{Any}
+end
 ```
 
-Types that define component lifecycle management:
-- `SingletonScope`: One instance is shared across the container
-- `PrototypeScope`: New instance is created for each request
+Central registry that manages components and aspects. Maintains the lifecycle of registered objects.
 
 ## Component Management
 
 ### @component
 
 ```julia
-@component struct MyComponent <: AbstractComponent
+@component struct MyComponent
     field::Type
     # ...
 end
 ```
 
-Marks a struct as a component, making it available for dependency injection. Features:
-- Automatic registration with container
-- Support for constructor injection
-- Lifecycle management through scopes
+Marks a struct as a component, making it available for dependency injection. The struct can either:
+- Directly inherit from `AbstractComponent`
+- Implement conversion to `AbstractComponent`
+
+Features:
+- Automatic type conversion
 - Circular dependency detection
+- Component registration support
 
 ### register!
 
 ```julia
-register!(component::T; scope::Scope = SingletonScope()) where T <: AbstractComponent
+register!(component)
 ```
 
-Registers a component instance with the container. Parameters:
-- `component`: The component instance to register
-- `scope`: The scope that determines instance lifecycle (default: singleton)
+Registers a component instance with the container. The component must either:
+- Inherit from `AbstractComponent`
+- Be convertible to `AbstractComponent`
 
-Returns the registered component instance.
+Throws:
+- `InvalidComponentError`: If component cannot be converted to `AbstractComponent`
+- `DuplicateComponentError`: If component is already registered
 
 ### get_instance
 
@@ -66,73 +62,56 @@ get_instance(T::Type)
 ```
 
 Retrieves an instance of the specified component type from the container.
-Throws `ComponentNotFoundError` if component is not registered.
-
-## Dependency Injection
-
-### @autowired
-
-```julia
-@autowired service::ServiceType
-```
-
-Creates a function that retrieves the specified component from the container.
-The function name will be the same as the field name.
-
-Features:
-- Lazy loading of dependencies
-- Automatic scope handling
-- Type safety checks
+Throws `ComponentNotFoundError` if no matching component is found.
 
 ## Aspect-Oriented Programming
 
 ### @aspect
 
 ```julia
-@aspect struct MyAspect <: AbstractAspect
+@aspect struct MyAspect
     field::Type
     # ...
 end
 ```
 
-Defines an aspect that can add behavior to components through advice.
+Defines an aspect that can add behavior to functions through advice.
 Features:
 - State management through fields
-- Multiple advice support
-- Pointcut expression matching
+- Support for before/after/around advice
+- Access to function context in advice
 
 ### Advice Types
 
 #### @before
 
 ```julia
-@before pointcut begin
+@before target_fn begin
     # code to execute before the target
 end
 ```
 
 Creates advice that executes before the target function.
-Parameters:
-- `pointcut`: String pattern matching target methods
-- `body`: Code block to execute
+The advice body has access to:
+- `args`: Array of all arguments passed to the function
 
 #### @after
 
 ```julia
-@after pointcut begin
+@after target_fn begin
     # code to execute after the target
 end
 ```
 
 Creates advice that executes after the target function.
-Parameters:
-- `pointcut`: String pattern matching target methods
-- `body`: Code block to execute
+The advice body has access to:
+- `args`: Array of all arguments passed to the function
+- `result`: The value returned by the target function
 
 #### @around
 
 ```julia
-@around pointcut begin
+@around target_fn begin
     # code to execute around the target
     result = proceed()
     # more code
@@ -141,9 +120,16 @@ end
 ```
 
 Creates advice that executes both before and after the target function.
-Parameters:
-- `pointcut`: String pattern matching target methods
-- `body`: Code block with `proceed()` call
+The advice body has access to:
+- `fn_name`: Symbol of the target function name
+- `args`: Array of all arguments passed to the function
+- `x`: First argument (if any) for convenience
+- `proceed()`: Function to execute the target method
+
+Special features:
+- Must call `proceed()` exactly once
+- Can modify the return value
+- Can handle exceptions
 
 ## Container Management
 
@@ -179,8 +165,28 @@ Thrown when attempting to retrieve a component that is not registered.
 
 ```julia
 struct CircularDependencyError <: Exception
-    cycle::Vector{Type}
+    cycle::Vector{Any}
 end
 ```
 
-Thrown when a circular dependency is detected during component initialization. 
+Thrown when a circular dependency is detected during component initialization.
+
+### InvalidComponentError
+
+```julia
+struct InvalidComponentError <: Exception
+    type::Type
+end
+```
+
+Thrown when attempting to register a component that cannot be converted to `AbstractComponent`.
+
+### DuplicateComponentError
+
+```julia
+struct DuplicateComponentError <: Exception
+    type::Type
+end
+```
+
+Thrown when attempting to register a component of a type that is already registered. 

@@ -1,214 +1,211 @@
 # Examples
 
-## Basic Dependency Injection
+## Basic Component Management
 
-### Simple Service
+### Component Definition and Registration
 
 ```julia
-# Define a basic configuration component
-@component struct Config
-    host::String
-    port::Int
+using Jolien
+
+# Define a component using inheritance
+@component struct DirectComponent <: AbstractComponent
+    name::String
 end
 
-# Define a service that depends on the config
-@component struct DatabaseService
-    config::Config
-    connection::Union{Nothing, String}
-    
-    function DatabaseService(config::Config)
-        new(config, nothing)
-    end
+# Define a component using conversion
+@component struct ConvertibleComponent
+    value::Int
 end
 
 # Register components
-config = Config("localhost", 5432)
-register!(config)
+direct = DirectComponent("direct")
+register!(direct)
 
-db = DatabaseService(config)
-register!(db)
+convertible = ConvertibleComponent(42)
+register!(convertible)
 
-# Use autowired to get instances
-@autowired db_service::DatabaseService
-@test db_service().config.host == "localhost"
+# Retrieve components
+@test get_instance(DirectComponent).name == "direct"
+@test get_instance(ConvertibleComponent).value == 42
 ```
 
 ## Aspect-Oriented Programming
 
-### Logging Aspect
+### Basic Logging Aspect
 
 ```julia
 # Define a logging aspect
 @aspect struct LoggingAspect
-    log_count::Ref{Int}
+    log::Vector{String}
     
-    function LoggingAspect()
-        new(Ref(0))
-    end
+    LoggingAspect() = new(String[])
 end
 
-# Create logging functions
-function log_entry(aspect::LoggingAspect, method_name::String)
-    aspect.log_count[] += 1
-    println("Entering method: ", method_name)
-end
-
-function log_exit(aspect::LoggingAspect, method_name::String)
-    println("Exiting method: ", method_name)
-end
-
-# Apply aspects
 let
     aspect = LoggingAspect()
     
-    # Before advice
-    before_advice = @before "query" begin
-        log_entry(aspect, "query")
+    function greet(name::String)
+        return "Hello, $name!"
     end
     
-    # After advice
-    after_advice = @after "query" begin
-        log_exit(aspect, "query")
+    # Add logging with @around
+    logged_greet = @around greet begin
+        push!(aspect.log, "Calling greet with args: $args")
+        result = proceed()
+        push!(aspect.log, "greet returned: $result")
+        result
     end
     
-    # Target function
-    query_fn = () -> "SELECT * FROM users"
-    
-    # Apply advices
-    logged_query = after_advice(before_advice(query_fn))
-    
-    # Execute
-    result = logged_query()
-    @test aspect.log_count[] == 1
+    # Test the logged function
+    @test logged_greet("World") == "Hello, World!"
+    @test length(aspect.log) == 2
+    @test aspect.log[1] == "Calling greet with args: [\"World\"]"
+    @test aspect.log[2] == "greet returned: Hello, World!"
 end
 ```
 
-## Scoping Rules
-
-### Singleton vs Prototype
+### State Management Aspect
 
 ```julia
-# Singleton component (default)
-@component struct SingletonService
-    id::Int
+# Define an aspect that tracks function calls
+@aspect struct StateAspect
+    states::Dict{Symbol, Any}
     
-    function SingletonService()
-        new(rand(1:1000))
-    end
+    StateAspect() = new(Dict{Symbol, Any}())
 end
 
-# Prototype component
-@component struct PrototypeService
-    id::Int
+function record_call(aspect::StateAspect, fn_name::Symbol, args::Vector, result)
+    # Update call count
+    aspect.states[fn_name] = get(aspect.states, fn_name, 0) + 1
     
-    function PrototypeService()
-        new(rand(1:1000))
+    # Update argument history
+    args_key = Symbol(:args_, fn_name)
+    if !haskey(aspect.states, args_key)
+        aspect.states[args_key] = []
     end
-end
-
-# Register with different scopes
-singleton = SingletonService()
-register!(singleton)  # Default SingletonScope
-
-prototype = PrototypeService()
-register!(prototype, scope=PrototypeScope())
-
-# Test scoping
-@autowired s1::SingletonService
-@autowired s2::SingletonService
-@test s1().id == s2().id  # Same instance
-
-@autowired p1::PrototypeService
-@autowired p2::PrototypeService
-@test p1().id != p2().id  # Different instances
-```
-
-## Advanced Features
-
-### Circular Dependency Detection
-
-```julia
-# This will throw CircularDependencyError
-@component struct ServiceA
-    b::ServiceB
-end
-
-@component struct ServiceB
-    a::ServiceA
-end
-
-@test_throws CircularDependencyError begin
-    a = ServiceA(ServiceB(a))
-end
-```
-
-### Conditional Configuration
-
-```julia
-# Environment-based configuration
-@component struct EnvConfig
-    mode::String
+    push!(aspect.states[args_key], args...)
     
-    function EnvConfig()
-        env = get(ENV, "APP_ENV", "development")
-        new(env)
+    # Update result history
+    results_key = Symbol(:results_, fn_name)
+    if !haskey(aspect.states, results_key)
+        aspect.states[results_key] = []
     end
+    push!(aspect.states[results_key], result)
+    
+    return result
 end
 
-# Register based on environment
-if get(ENV, "APP_ENV", "development") == "production"
-    register!(EnvConfig())
-else
-    register!(EnvConfig())
+let
+    aspect = StateAspect()
+    
+    function calculate(x::Int)
+        return x * 2
+    end
+    
+    # Add state tracking
+    tracked_calc = @around calculate begin
+        result = proceed()
+        record_call(aspect, fn_name, args, result)
+        result
+    end
+    
+    # Test the tracked function
+    @test tracked_calc(5) == 10
+    @test tracked_calc(3) == 6
+    
+    # Verify state
+    @test aspect.states[Symbol("calculate")] == 2  # Call count
+    @test aspect.states[Symbol(:args_, "calculate")] == [5, 3]  # Arguments
+    @test aspect.states[Symbol(:results_, "calculate")] == [10, 6]  # Results
 end
 ```
 
 ### Multiple Aspects
 
 ```julia
-# Define multiple aspects
+# Define timing aspect
 @aspect struct TimingAspect
-    times::Dict{String, Float64}
+    times::Dict{Symbol, Float64}
     
-    function TimingAspect()
-        new(Dict{String, Float64}())
-    end
+    TimingAspect() = new(Dict{Symbol, Float64}())
 end
 
+# Define validation aspect
 @aspect struct ValidationAspect
-    valid::Ref{Bool}
+    valid::Dict{Symbol, Bool}
     
-    function ValidationAspect()
-        new(Ref(true))
-    end
+    ValidationAspect() = new(Dict{Symbol, Bool}())
 end
 
-# Apply multiple aspects
 let
     timing = TimingAspect()
     validation = ValidationAspect()
     
-    # Create advices
-    timing_advice = @around "process" begin
+    function process(data::Vector{Int})
+        sum(data)
+    end
+    
+    # Add timing measurement
+    timed_process = @around process begin
         start_time = time()
         result = proceed()
-        timing.times["process"] = time() - start_time
+        timing.times[fn_name] = time() - start_time
         result
     end
     
-    validation_advice = @before "process" begin
-        validation.valid[] = true
+    # Add validation
+    validated_process = @around timed_process begin
+        if isempty(args[1])
+            validation.valid[fn_name] = false
+            return 0
+        end
+        validation.valid[fn_name] = true
+        proceed()
     end
     
-    # Target function
-    process_fn = () -> sleep(0.1)
+    # Test with valid data
+    @test validated_process([1, 2, 3]) == 6
+    @test validation.valid[Symbol("process")] == true
+    @test haskey(timing.times, Symbol("process"))
     
-    # Apply multiple advices
-    monitored_fn = timing_advice(validation_advice(process_fn))
+    # Test with invalid data
+    @test validated_process(Int[]) == 0
+    @test validation.valid[Symbol("process")] == false
+end
+```
+
+### Error Handling
+
+```julia
+# Define error handling aspect
+@aspect struct ErrorHandlingAspect
+    errors::Dict{Symbol, Exception}
     
-    # Execute
-    monitored_fn()
-    @test haskey(timing.times, "process")
-    @test validation.valid[]
+    ErrorHandlingAspect() = new(Dict{Symbol, Exception}())
+end
+
+let
+    error_handler = ErrorHandlingAspect()
+    
+    function divide(a::Int, b::Int)
+        a / b
+    end
+    
+    # Add error handling
+    safe_divide = @around divide begin
+        try
+            proceed()
+        catch e
+            error_handler.errors[fn_name] = e
+            return nothing
+        end
+    end
+    
+    # Test normal case
+    @test safe_divide(10, 2) == 5.0
+    
+    # Test error case
+    @test safe_divide(1, 0) === nothing
+    @test error_handler.errors[Symbol("divide")] isa DivideError
 end
 ``` 
