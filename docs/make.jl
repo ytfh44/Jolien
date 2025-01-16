@@ -5,6 +5,7 @@ makedocs(
     sitename = "Jolien",
     format = Documenter.HTML(),
     modules = [Jolien],
+    strict = false,
     pages = [
         "Home" => "index.md",
         "API Reference" => "api.md"
