@@ -21,6 +21,8 @@ jobs:
           - '1.8'
           - '1.9'
           - '1.10'
+          - '1.11'
+          - '1.12'
           - 'nightly'
         os:
           - ubuntu-latest
@@ -35,6 +37,13 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v1
+      - name: Generate Manifest
+        run: |
+          julia --project=. -e '
+            using Pkg;
+            Pkg.resolve();
+            Pkg.instantiate();
+          '
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
       - uses: julia-actions/julia-processcoverage@v1
@@ -50,6 +59,13 @@ jobs:
       - uses: julia-actions/setup-julia@v1
         with:
           version: '1.9'
+      - name: Generate Manifest
+        run: |
+          julia --project=. -e '
+            using Pkg;
+            Pkg.resolve();
+            Pkg.instantiate();
+          '
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-docdeploy@v1
         env:

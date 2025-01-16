@@ -5,6 +5,7 @@
 deps/deps.jl
 docs/build/
 docs/site/
+Manifest.toml
 
 # VS Code
 .vscode/
