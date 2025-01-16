@@ -14,7 +14,7 @@ Jolien is a lightweight dependency injection and aspect-oriented programming fra
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/yourusername/Jolien.jl")
+Pkg.add(url="https://github.com/ytfh44/Jolien")
 ```
 
 ## Quick Start
