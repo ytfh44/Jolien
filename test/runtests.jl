@@ -8,4 +8,5 @@ using Jolien: reset_container!, proceed, GLOBAL_CONTAINER
     include("container_test.jl")
     include("aspect_test.jl")
     include("config_test.jl")
+    include("advanced_test.jl")
 end 
