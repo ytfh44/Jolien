@@ -37,10 +37,11 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v1
-      - name: Generate Manifest
+      - name: Update Registry and Generate Manifest
         run: |
           julia --project=. -e '
             using Pkg;
+            Pkg.Registry.update();
             Pkg.resolve();
             Pkg.instantiate();
           '
@@ -59,10 +60,11 @@ jobs:
       - uses: julia-actions/setup-julia@v1
         with:
           version: '1.9'
-      - name: Generate Manifest
+      - name: Update Registry and Generate Manifest
         run: |
           julia --project=. -e '
             using Pkg;
+            Pkg.Registry.update();
             Pkg.resolve();
             Pkg.instantiate();
           '
